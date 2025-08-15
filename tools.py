@@ -224,8 +224,8 @@ class Aromatics:
         phi = np.arccos(cos_phi)
 
         if wrap:
-            theta = _wrap_angle(theta)
-            phi   = _wrap_angle(phi)
+            theta = wrap_angle(theta)
+            phi   = wrap_angle(phi)
 
         # Flatten (F, Na, Nb) -> (F, K) and stack to (K, F, 3)
         theta   = theta.reshape(self.n_frames, K)
@@ -669,14 +669,14 @@ class HBonds:
                               acceptor_group: Iterable[str]=None,
                               criteria: callable = hbond_def,
                               aggr: callable = np.any,
-                              args: tuple = None
+                              angles: tuple = None
                               ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Fast core math via broadcasting; simple, memory-lean label building.
         """
-        if args is not None:
-            hbonds = group_by(args[1], criteria(*args[0][...,:-1].T).T , partial(aggr, axis=0))
-            return hbonds, *args[1:]
+        if angles is not None:
+            hbonds = group_by(angles[1], criteria(*angles[0][...,:-1].T).T , partial(aggr, axis=0))
+            return hbonds, *angles[1:]
         
         angles, pair_groups, pairs = self.angles_between_groups(donor_group, acceptor_group)
         hbonds = group_by(pair_groups, criteria(*angles[...,:-1].T).T , partial(aggr, axis=0))
