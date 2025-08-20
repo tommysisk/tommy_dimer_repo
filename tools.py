@@ -118,6 +118,9 @@ def aro_angles(pairs, centers, normals,  unitcell_lengths):
 
 
 
+import numpy as np
+from typing import Iterable, Dict, List, Tuple, Optional
+
 class Aromatics:
     """
     Broadcasted aromatic angle/distance computation using your helpers.
@@ -143,7 +146,6 @@ class Aromatics:
         self.centers, self.normals, self.ids = aromatic_rings(traj)
         # ids: list of (res_index, res_name, atom_idx_list)
 
-        #R = self.normals.shape[1]
         # Build ring -> residue index and ring's ordinal within residue
         self.rings_per_res: Dict[int, List[int]] = {}
         self.res_name: Dict[int, str] = {}
@@ -213,27 +215,20 @@ class Aromatics:
         nB = self.normals[:, ringsB, :]   # (F, Nb, 3)
 
         # 2) theta = arccos( nA · nB )  → shape (F, Na, Nb)
-        cos_theta = np.einsum('fai,fbi->fab', nA, nB)
-        np.clip(cos_theta, -1.0, 1.0, out=cos_theta)
+        # Minimal fix: expand dims so shapes are (F, Na, 1, 3) and (F, 1, Nb, 3)
+        cos_theta = np.sum(nA[:, :, None, :] * nB[:, None, :, :], axis=-1).clip(-1, 1)  # (F, Na, Nb)
         theta = np.arccos(cos_theta)
 
         # 3) phi = arccos( u_ij · nB ), broadcasting nB across Na
         #    U: (F, Na, Nb, 3), nB[:, None, :, :] -> (F, 1, Nb, 3)
-        cos_phi = np.sum(U * nB[:, None, :, :], axis=-1)  # (F, Na, Nb)
-        np.clip(cos_phi, -1.0, 1.0, out=cos_phi)
-        phi = np.arccos(cos_phi)
+        phi = np.arccos(np.sum(U * nB[:, None, :, :], axis=-1).clip(-1, 1))  # (F, Na, Nb)
 
         if wrap:
-            theta = wrap_angle(theta)
-            phi   = wrap_angle(phi)
+            theta, phi = (wrap_angle(i) for i in (theta, phi))
 
         # Flatten (F, Na, Nb) -> (F, K) and stack to (K, F, 3)
-        theta   = theta.reshape(self.n_frames, K)
-        phi     = phi.reshape(self.n_frames, K)
-        dist    = dist.reshape(self.n_frames, K)
-
-        out = np.stack([theta, phi, dist], axis=-1)      # (F, K, 3)
-        angles = np.transpose(out, (1, 0, 2))            # (K, F, 3)
+        angles = np.stack([i.reshape(self.n_frames, K) for i in [theta, phi, dist]], axis=-1).transpose((1, 0, 2))
+        # (K, F, 3)
 
         # ---------- Lean labeling & grouping (no big temp arrays) ----------
         # Precompute ring labels (site-aware) and base residue labels
@@ -310,6 +305,11 @@ class Aromatics:
             return int(x)
         except Exception:
             return None
+
+
+# ------------------------ tiny broadcast sanity test ------------------------
+# This only checks the fixed broadcasting logic for theta/phi shapes, not MD specifics.
+
 
 # corrected cutoffs - previous misses T stacks with probability 1/2
 
